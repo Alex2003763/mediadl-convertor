@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, PhotoImage
 import os
 import threading
+import json # For theme persistence (re-added for future settings integration)
 import re # For cleaning ANSI codes from yt-dlp progress string
 
 import tkinter.font as tkFont # Import for font management
@@ -47,62 +48,61 @@ class App(tk.Tk):
 
 
         # --- Style Configuration ---
-        style = ttk.Style(self)
-        # default_font = ("Helvetica", 10) # Using Helvetica as a common sans-serif # Old
+        self.style = ttk.Style(self) # <--- 修正: 確保 style 是實例變數 self.style
 
         # Global style configurations
-        style.configure('.', 
+        self.style.configure('.', 
                         font=self.font_body, # Apply new font_body
                         background=theme.BACKGROUND_CONTENT, 
                         foreground=theme.TEXT_PRIMARY_ON_LIGHT, 
                         padding=(5, 5))
 
         # Labels (TLabel)
-        style.configure('TLabel', 
+        self.style.configure('TLabel', 
                         font=self.font_body, # Apply new font_body
                         background=theme.BACKGROUND_CONTENT, 
                         foreground=theme.TEXT_PRIMARY_ON_LIGHT, 
                         padding=(5,5))
         # Specific label for URL/Format description, now on the "card" (input_frame)
-        style.configure('InputDescription.TLabel', 
+        self.style.configure('InputDescription.TLabel', 
                         font=self.font_body, # Apply new font_body
                         background=theme.BACKGROUND_CONTENT, 
                         foreground=theme.TEXT_PRIMARY_ON_LIGHT)
 
         # Frame style for card-like appearance
-        style.configure('Card.TFrame', background=theme.BACKGROUND_CONTENT, relief='raised', borderwidth=1)
+        self.style.configure('Card.TFrame', background=theme.BACKGROUND_CONTENT, relief='raised', borderwidth=1)
 
 
         # Buttons (TButton)
-        style.configure('TButton',
+        self.style.configure('TButton',
                         font=self.font_button, # Apply new font_button
                         background=theme.COLOR_ACCENT,
                         foreground=theme.TEXT_PRIMARY_ON_DARK,
                         borderwidth=0,
                         relief='flat',
                         padding=(10, 8)) 
-        style.map('TButton',
+        self.style.map('TButton',
                   background=[('active', theme.COLOR_ACCENT_DARK), 
                               ('disabled', theme.BACKGROUND_INPUT)],
                   foreground=[('disabled', theme.TEXT_SECONDARY_ON_LIGHT)])
 
         # Input Fields (TEntry)
-        style.configure('TEntry',
+        self.style.configure('TEntry',
                         font=self.font_body, # Apply new font_body
                         fieldbackground=theme.BACKGROUND_CONTENT,
                         foreground=theme.TEXT_PRIMARY_ON_LIGHT,
+                        insertcolor=theme.TEXT_PRIMARY_ON_LIGHT, # <--- 修正: 重新加入 insertcolor
                         borderwidth=1, 
                         relief='solid',
                         padding=(5,5))
-        # TODO: Set insertcolor directly on widget instance for TEntry
-        # self.url_entry.configure(insertbackground=theme.TEXT_PRIMARY_ON_LIGHT)
-        style.map('TEntry',
+
+        self.style.map('TEntry',
                   bordercolor=[('focus', theme.COLOR_ACCENT)],
                   relief=[('focus', 'solid')])
 
 
         # OptionMenu (TMenubutton)
-        style.configure('TMenubutton',
+        self.style.configure('TMenubutton',
                         font=self.font_body, # Apply new font_body
                         background=theme.BACKGROUND_CONTENT, 
                         foreground=theme.TEXT_PRIMARY_ON_LIGHT,
@@ -111,7 +111,7 @@ class App(tk.Tk):
                         borderwidth=1) 
 
         # Progress Bar (Horizontal.TProgressbar)
-        style.configure('Horizontal.TProgressbar',
+        self.style.configure('Horizontal.TProgressbar',
                         background=theme.COLOR_ACCENT, # Color of the bar itself
                         troughcolor=theme.BACKGROUND_INPUT, # Background of the trough
                         borderwidth=0,
@@ -289,75 +289,77 @@ class App(tk.Tk):
         theme.set_current_theme(theme_name)
         self.configure(bg=theme.BACKGROUND_WINDOW)
 
-        style = ttk.Style(self)
-        style.configure('.', 
+        # 使用 self.style，它已在 __init__ 中被初始化為實例變數
+        self.style.configure('.', 
                         font=self.font_body, 
                         background=theme.BACKGROUND_WINDOW, # Default background for widgets
                         foreground=theme.TEXT_PRIMARY)
-        style.configure('TLabel', 
+        self.style.configure('TLabel', 
                         background=theme.BACKGROUND_WINDOW, # Labels on general background
                         foreground=theme.TEXT_PRIMARY)
-        style.configure('InputDescription.TLabel', 
+        self.style.configure('InputDescription.TLabel', 
                         background=theme.BACKGROUND_CONTENT, # Labels on card background
                         foreground=theme.TEXT_PRIMARY)
-        style.configure('Card.TFrame', 
+        self.style.configure('Card.TFrame', 
                         background=theme.BACKGROUND_CONTENT, 
                         relief='raised', borderwidth=1)
         
         # Notebook specific styling
-        style.configure('TNotebook', background=theme.BACKGROUND_WINDOW, borderwidth=0)
-        style.configure('TNotebook.Tab', 
+        self.style.configure('TNotebook', background=theme.BACKGROUND_WINDOW, borderwidth=0)
+        self.style.configure('TNotebook.Tab', 
                         font=self.font_body_bold, 
                         padding=(10, 5),
                         foreground=theme.TEXT_SECONDARY)
-        style.map('TNotebook.Tab',
+        self.style.map('TNotebook.Tab',
                   background=[('selected', theme.BACKGROUND_CONTENT), ('!selected', theme.BACKGROUND_INPUT)],
                   foreground=[('selected', theme.COLOR_ACCENT), ('!selected', theme.TEXT_SECONDARY)],
                   bordercolor=[('selected', theme.DIVIDER_COLOR), ('!selected', theme.BACKGROUND_INPUT)],
                   lightcolor=[('selected', theme.BACKGROUND_CONTENT)])
         
-        style.configure('Tab.TFrame', background=theme.BACKGROUND_WINDOW) # For tab content frames
+        self.style.configure('Tab.TFrame', background=theme.BACKGROUND_WINDOW) # For tab content frames
         if hasattr(self, 'media_tab_frame') and self.media_tab_frame:
             self.media_tab_frame.configure(style='Tab.TFrame')
         if hasattr(self, 'image_tab_frame') and self.image_tab_frame:
             self.image_tab_frame.configure(style='Tab.TFrame')
 
 
-        style.configure('TButton',
+        self.style.configure('TButton',
                         font=self.font_button,
                         background=theme.COLOR_ACCENT,
                         foreground=theme.TEXT_ON_ACCENT_COLOR, # Updated variable
                         borderwidth=0, relief='flat', padding=(10, 8))
-        style.map('TButton',
+        self.style.map('TButton',
                   background=[('active', theme.COLOR_ACCENT_DARK), 
                               ('disabled', theme.BACKGROUND_INPUT)],
                   foreground=[('disabled', theme.TEXT_SECONDARY)]) # Updated variable
 
-        style.configure('TEntry',
+        self.style.configure('TEntry',
                         font=self.font_body,
                         fieldbackground=theme.BACKGROUND_CONTENT,
                         foreground=theme.TEXT_PRIMARY, # Updated variable
+                        insertcolor=theme.TEXT_PRIMARY, # <--- 修正: 重新加入 insertcolor
                         borderwidth=1, 
                         relief='solid', padding=(5,5))
-        if hasattr(self, 'url_entry') and self.url_entry: self.url_entry.configure(insertbackground=theme.TEXT_PRIMARY)
-        if hasattr(self, 'image_url_entry') and self.image_url_entry: self.image_url_entry.configure(insertbackground=theme.TEXT_PRIMARY)
+        # <--- 移除以下兩行，因為它們是錯誤的且與上面的 style.configure 重複
+        # if hasattr(self, 'url_entry') and self.url_entry: self.url_entry.configure(insertbackground=theme.TEXT_PRIMARY)
+        # if hasattr(self, 'image_url_entry') and self.image_url_entry: self.image_url_entry.configure(insertbackground=theme.TEXT_PRIMARY)
         
-        style.map('TEntry',
+        self.style.map('TEntry',
                   bordercolor=[('focus', theme.COLOR_ACCENT)],
                   relief=[('focus', 'solid')])
-        style.configure('TMenubutton',
+        self.style.configure('TMenubutton',
                         font=self.font_body,
                         background=theme.BACKGROUND_CONTENT, 
                         foreground=theme.TEXT_PRIMARY, # Updated variable
                         relief='flat', padding=(5,5), borderwidth=1)
-        style.configure('Horizontal.TProgressbar',
+        self.style.configure('Horizontal.TProgressbar',
                         background=theme.COLOR_ACCENT,
                         troughcolor=theme.BACKGROUND_INPUT,
                         borderwidth=0, relief='flat')
         
         if hasattr(self, 'status_text'):
             self.status_text.config(bg=theme.BACKGROUND_CONTENT, fg=theme.TEXT_SECONDARY,
-                                    insertbackground=theme.TEXT_PRIMARY)
+                                    insertbackground=theme.TEXT_PRIMARY) # 此行對於 tk.Text 依然正確
         
         # Settings frame and its contents will be styled via Card.TFrame, TButton, TRadiobutton, etc.
         # if hasattr(self, 'settings_frame'): self.settings_frame.configure(style='Card.TFrame')

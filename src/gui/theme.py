@@ -16,7 +16,7 @@ THEMES = {
         "COLOR_ACCENT": "#E91E63",  # Pink 500
         "COLOR_ACCENT_DARK": "#C2185B", # Pink 700
         "COLOR_ACCENT_LIGHT": "#F8BBD0", # Pink 100
-        "TEXT_PRIMARY": "#000000",  # True Black (on light backgrounds)
+        "TEXT_PRIMARY": "#212121",  # Almost Black (on light backgrounds)
         "TEXT_SECONDARY": "#757575",  # Medium Grey (on light backgrounds)
         "TEXT_HINT": "#BDBDBD", # Light Grey for hints (on light backgrounds)
         "BACKGROUND_WINDOW": "#F5F5F5",  # Light Grey - typical Material background
@@ -56,7 +56,11 @@ def get_current_theme_colors():
 
 def set_current_theme(theme_name):
     """Sets the current theme and updates global color variables."""
+    # 將所有需要修改的全域變數集中在函式頂部宣告
     global _current_theme_name
+    global TEXT_PRIMARY_ON_LIGHT, TEXT_SECONDARY_ON_LIGHT, TEXT_HINT_ON_LIGHT
+    global TEXT_PRIMARY_ON_DARK, TEXT_SECONDARY_ON_DARK
+
     if theme_name not in THEMES:
         print(f"Warning: Theme '{theme_name}' not found. Defaulting to 'Light'.")
         _current_theme_name = "Light"
@@ -71,16 +75,14 @@ def set_current_theme(theme_name):
     # New code should prefer TEXT_PRIMARY, TEXT_SECONDARY from the theme dict.
     # These are a bit of a legacy now but helps with transition.
     if _current_theme_name == "Dark":
-        global TEXT_PRIMARY_ON_LIGHT, TEXT_SECONDARY_ON_LIGHT, TEXT_HINT_ON_LIGHT
-        global TEXT_PRIMARY_ON_DARK, TEXT_SECONDARY_ON_DARK
+        # 這裡不再需要 'global' 宣告，因為已經在函式頂部宣告過了
         TEXT_PRIMARY_ON_LIGHT = current_colors["TEXT_PRIMARY"] # This is now text on dark effectively
         TEXT_SECONDARY_ON_LIGHT = current_colors["TEXT_SECONDARY"]
         TEXT_HINT_ON_LIGHT = current_colors["TEXT_HINT"]
         TEXT_PRIMARY_ON_DARK = current_colors["TEXT_PRIMARY"] # Re-affirm for clarity
         TEXT_SECONDARY_ON_DARK = current_colors["TEXT_SECONDARY"]
     else: # Light theme
-        global TEXT_PRIMARY_ON_LIGHT, TEXT_SECONDARY_ON_LIGHT, TEXT_HINT_ON_LIGHT
-        global TEXT_PRIMARY_ON_DARK, TEXT_SECONDARY_ON_DARK # These were already for dark backgrounds
+        # 這裡不再需要 'global' 宣告
         TEXT_PRIMARY_ON_LIGHT = current_colors["TEXT_PRIMARY"]
         TEXT_SECONDARY_ON_LIGHT = current_colors["TEXT_SECONDARY"]
         TEXT_HINT_ON_LIGHT = current_colors["TEXT_HINT"]
@@ -104,7 +106,7 @@ COLOR_WARNING = "#FFA000" # Amber
 # Base64 encoded GIF for a simple download icon (16x16)
 # Source: A common, simple download icon.
 # This icon might need versions for light/dark themes if it doesn't look good on one.
-DOWNLOAD_ICON_BASE64 = "R0lGODlhEAAQAMQAAORHHOVSKudfOulrSOp3WOyDZu6QdvCchPGolfO0o/XBs/fNwfjZ0frl3/zy7////wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAkAABAALAAAAAAQABAAAAVVICSOZGlCQAosJ6mu7fiyZeKqNKToQGDsMBOAKUTYEYlLPTBByAgBYHhIRAHA4W0LAEGJRIYYBiMQCAYSOSTDPTRENf8gBक्रियர் அனைத்தும் ஒருவரே. TTBkAAA7"
+DOWNLOAD_ICON_BASE64 = "R0lGODlhEAAQAMQAAORHHOVSKudfOulrSOp3WOyDZu6QdvCchPGolfO0o/XBs/fNwfjZ0frl3/zy7////wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAkAABAALAAAAAAQABAAAAVVICSOZGlCQAosJ6mu7fiyZeKqNKToQGDsMBOAKUTYEYlLPTBByAgBYHhIRAHA4W0LAEGJRIYYBiMQCAYSOSTDPTRENf8gBक्रियर् அனைத்தும் ஒருவரே. TTBkAAA7"
 
 # --- Fonts ---
 FONT_FAMILY_PRIMARY = "Roboto" # Preferred
