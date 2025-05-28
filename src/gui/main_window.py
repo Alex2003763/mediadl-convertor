@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, PhotoImage
 import os
 import threading
+import json # For theme persistence
 import re # For cleaning ANSI codes from yt-dlp progress string
 
 import tkinter.font as tkFont # Import for font management
@@ -16,12 +17,21 @@ from src.core.downloader import Downloader, DownloadError
 from src.core.converter import Converter, ConversionError
 from . import theme # Import the theme
 
+SETTINGS_FILE = "settings.json"
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.configure(bg=theme.BACKGROUND_WINDOW) # Set main window background
+        self._load_theme_preference() # Load theme before any UI is built
 
+        # Initialize self.settings_window to None
+        self.settings_window = None
+        self.settings_theme_frame = None
+        self.settings_theme_label = None
+        self.settings_light_theme_rb = None
+        self.settings_dark_theme_rb = None
+
+        # self.configure(bg=theme.BACKGROUND_WINDOW) # Moved to apply_theme
         self.title("Media Downloader and Converter")
         self.geometry("700x450")  # Adjusted size for better layout
 
@@ -122,22 +132,34 @@ class App(tk.Tk):
 
         # --- UI Elements ---
         self.grid_columnconfigure(0, weight=1) # Main content frame column
-        self.grid_rowconfigure(3, weight=1) # Status area row
+        self.grid_rowconfigure(0, weight=1) # main_content_frame is in row 0 and should expand
 
         # --- Main Content Frame ---
-        main_content_frame = ttk.Frame(self, padding=(10,10))
-        main_content_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=(10,0)) # Pad X, and Top only for main frame
+        # Adjusted main_content_frame pady to (10,10) for some bottom padding as well
+        main_content_frame = ttk.Frame(self, padding=(10,10)) 
+        main_content_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10) 
         main_content_frame.grid_columnconfigure(0, weight=1) # Allow content within to expand
+        # Row configuration for main_content_frame elements:
+        # Row 0: input_frame
+        # Row 1: download_button
+        # Row 2: progress_bar
+        # Row 3: settings_button
+        # Row 4: status_text_frame (this should expand)
+        main_content_frame.grid_rowconfigure(4, weight=1) # Ensure status area (row 4) expands
 
         # --- Input Frame for URL and Format (Card-like) ---
         input_frame = ttk.Frame(main_content_frame, padding=(15,15), style='Card.TFrame')
-        input_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0,10)) # Spacing below input card
+        # Added pady=10 for consistent vertical spacing around this card
+        input_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=10) 
         input_frame.grid_columnconfigure(1, weight=1) # Allow entry and menu to expand within this frame
 
         # Media URL
         self.url_label = ttk.Label(input_frame, text="Media URL:", style='InputDescription.TLabel')
-        self.url_label.grid(row=0, column=0, padx=(0,10), pady=(0,10), sticky="w") # Increased internal padding
-        self.url_entry = ttk.Entry(input_frame, width=60) 
+        self.url_label.grid(row=0, column=0, padx=(0,10), pady=(0,10), sticky="w")
+        
+        self.url_var = tk.StringVar()
+        self.url_var.trace_add("write", self._check_url_type)
+        self.url_entry = ttk.Entry(input_frame, width=60, textvariable=self.url_var) 
         self.url_entry.grid(row=0, column=1, pady=(0,10), sticky="ew")
 
         # Output Format
@@ -169,11 +191,12 @@ class App(tk.Tk):
         # Status Messages - Frame and Text widget
         # This frame will also be part of main_content_frame for consistent padding from window edges
         self.status_text_frame = ttk.Frame(main_content_frame) 
-        self.status_text_frame.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=(0,5)) # pady adjusted
+        # Row index for status_text_frame is 4, set by settings_button addition. pady is fine.
+        self.status_text_frame.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=(0,5)) 
         self.status_text_frame.grid_rowconfigure(0, weight=1)
         self.status_text_frame.grid_columnconfigure(0, weight=1)
         
-        main_content_frame.grid_rowconfigure(3, weight=1) # Allow status_text_frame to expand within main_content_frame
+        # main_content_frame.grid_rowconfigure(4, weight=1) is now set above where main_content_frame rows are listed
 
         self.status_text = tk.Text(self.status_text_frame, 
                                  height=10, width=80, # Width might be less critical if it expands
@@ -190,8 +213,247 @@ class App(tk.Tk):
         self.scrollbar = ttk.Scrollbar(self.status_text_frame, orient=tk.VERTICAL, command=self.status_text.yview)
         self.status_text.config(yscrollcommand=self.scrollbar.set)
         self.scrollbar.grid(row=0, column=1, sticky="ns")
+
+        # --- Settings Button ---
+        self.settings_button = ttk.Button(
+            main_content_frame, # Placed in main_content_frame for similar padding
+            text="Settings",
+            command=self.open_settings_window,
+            style='TButton' # Apply standard button styling
+        )
+        # Place it below the progress bar and above the status text area.
+        # Adjust row numbers for elements below if necessary (e.g. status_text_frame)
+        self.settings_button.grid(row=3, column=0, columnspan=2, pady=10) # This is row 3 of main_content_frame
+
+        # status_text_frame is already correctly placed at row 4 after settings_button by prior diffs
+        # self.status_text_frame.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=(0,5))
+        # main_content_frame.grid_rowconfigure(4, weight=1) is set where main_content_frame rows are defined
         
+        # Apply initial theme to all components after they are created
+        self.apply_theme(theme._current_theme_name) 
         self.update_status("Ready. Enter a URL and select a format.")
+
+    def _load_theme_preference(self):
+        try:
+            with open(SETTINGS_FILE, 'r') as f:
+                settings = json.load(f)
+                theme_name = settings.get("theme", "Light")
+                if theme_name not in theme.THEMES:
+                    theme_name = "Light" # Fallback for invalid theme name
+        except (FileNotFoundError, json.JSONDecodeError):
+            theme_name = "Light" # Default if file not found or corrupt
+        theme.set_current_theme(theme_name)
+
+    def _save_theme_preference(self, theme_name):
+        try:
+            with open(SETTINGS_FILE, 'w') as f:
+                json.dump({"theme": theme_name}, f)
+        except IOError as e:
+            self.update_status(f"Error saving theme: {e}")
+
+    def apply_theme(self, theme_name):
+        theme.set_current_theme(theme_name)
+        
+        # Re-configure main window
+        self.configure(bg=theme.BACKGROUND_WINDOW)
+
+        # Re-configure ttk styles
+        style = ttk.Style(self)
+        style.configure('.', 
+                        font=self.font_body,
+                        background=theme.BACKGROUND_CONTENT, 
+                        foreground=theme.TEXT_PRIMARY, # Changed from TEXT_PRIMARY_ON_LIGHT
+                        padding=(5, 5))
+        style.configure('TLabel', 
+                        font=self.font_body,
+                        background=theme.BACKGROUND_CONTENT, 
+                        foreground=theme.TEXT_PRIMARY, # Changed
+                        padding=(5,5))
+        style.configure('InputDescription.TLabel', 
+                        font=self.font_body,
+                        background=theme.BACKGROUND_CONTENT, 
+                        foreground=theme.TEXT_PRIMARY) # Changed
+        style.configure('Card.TFrame', 
+                        background=theme.BACKGROUND_CONTENT, 
+                        relief='raised', borderwidth=1)
+        style.configure('TButton',
+                        font=self.font_button,
+                        background=theme.COLOR_ACCENT,
+                        foreground=theme.TEXT_ON_ACCENT_COLOR, # Using new theme var
+                        borderwidth=0, relief='flat', padding=(10, 8))
+        style.map('TButton',
+                  background=[('active', theme.COLOR_ACCENT_DARK), 
+                              ('disabled', theme.BACKGROUND_INPUT)],
+                  foreground=[('disabled', theme.TEXT_SECONDARY)]) # Changed
+        style.configure('TEntry',
+                        font=self.font_body,
+                        fieldbackground=theme.BACKGROUND_CONTENT,
+                        foreground=theme.TEXT_PRIMARY, # Changed
+                        borderwidth=1, relief='solid', padding=(5,5))
+        self.url_entry.configure(insertbackground=theme.TEXT_PRIMARY) # Update insert color
+        # TODO: Apply insertbackground for other TEntry widgets if any are added
+        style.map('TEntry',
+                  bordercolor=[('focus', theme.COLOR_ACCENT)],
+                  relief=[('focus', 'solid')])
+        style.configure('TMenubutton',
+                        font=self.font_body,
+                        background=theme.BACKGROUND_CONTENT, 
+                        foreground=theme.TEXT_PRIMARY, # Changed
+                        relief='flat', padding=(5,5), borderwidth=1)
+        style.configure('Horizontal.TProgressbar',
+                        background=theme.COLOR_ACCENT,
+                        troughcolor=theme.BACKGROUND_INPUT,
+                        borderwidth=0, relief='flat')
+        
+        # Re-configure specific tk widgets
+        if hasattr(self, 'status_text'): # Check if status_text is initialized
+            self.status_text.config(bg=theme.BACKGROUND_CONTENT, fg=theme.TEXT_SECONDARY,
+                                    insertbackground=theme.TEXT_PRIMARY) # Added insertbackground
+        
+        # Update Settings Window if it's open
+        if self.settings_window and self.settings_window.winfo_exists():
+            self.settings_window.configure(bg=theme.BACKGROUND_WINDOW)
+            # Need a specific style for settings window card frame if it differs from main Card.TFrame
+            style.configure('SettingsWindow.Card.TFrame', background=theme.BACKGROUND_CONTENT)
+            if self.settings_theme_frame:
+                 self.settings_theme_frame.configure(style='SettingsWindow.Card.TFrame')
+            if self.settings_theme_label:
+                self.settings_theme_label.configure(background=theme.BACKGROUND_CONTENT, foreground=theme.TEXT_PRIMARY)
+            
+            # Update Radiobuttons style
+            # This is important for indicator color and text
+            style.configure('TRadiobutton', 
+                            font=self.font_body,
+                            background=theme.BACKGROUND_CONTENT, 
+                            foreground=theme.TEXT_PRIMARY)
+            style.map('TRadiobutton',
+                  background=[('active', theme.BACKGROUND_CONTENT)], 
+                  indicatorcolor=[('selected', theme.COLOR_ACCENT), ('!selected', theme.TEXT_SECONDARY)])
+            # Force refresh on radiobuttons if needed (sometimes style changes don't auto-propagate)
+            if self.settings_light_theme_rb: self.settings_light_theme_rb.style = 'TRadiobutton'
+            if self.settings_dark_theme_rb: self.settings_dark_theme_rb.style = 'TRadiobutton'
+
+    def _check_url_type(self, *args):
+        url = self.url_var.get().strip()
+        if not url: # Empty URL, reset to default state
+            self.format_menu.config(state="normal")
+            self.download_button.config(text="Download & Convert")
+            # Optionally clear any specific status messages related to URL type
+            return
+
+        is_image = self.downloader._is_direct_image_url(url) # Use the method from Downloader
+        
+        if is_image:
+            self.format_menu.config(state="disabled")
+            self.download_button.config(text="Download Image")
+            # self.update_status("Image URL detected. Output format will be its original format.")
+        else:
+            self.format_menu.config(state="normal")
+            self.download_button.config(text="Download & Convert")
+            # self.update_status("URL type recognized for general media processing.")
+
+
+    def _on_theme_selected(self):
+        selected_theme_name = self.selected_theme_var.get()
+        self.apply_theme(selected_theme_name)
+        self._save_theme_preference(selected_theme_name)
+
+
+    def _on_settings_window_destroy(self, event):
+        # Check if the event is for the settings_window itself
+        if event.widget == self.settings_window:
+            self.settings_window = None
+            self.settings_theme_frame = None
+            self.settings_theme_label = None
+            self.settings_light_theme_rb = None
+            self.settings_dark_theme_rb = None
+
+    def open_settings_window(self):
+        if self.settings_window and self.settings_window.winfo_exists():
+            self.settings_window.lift()
+            return
+
+        self.settings_window = tk.Toplevel(self)
+        self.settings_window.title("Settings")
+        self.settings_window.geometry("400x300")
+        self.settings_window.configure(bg=theme.BACKGROUND_WINDOW)
+        self.settings_window.grab_set()
+        self.settings_window.transient(self)
+        self.settings_window.bind("<Destroy>", self._on_settings_window_destroy)
+
+
+        # --- Theme Selection UI ---
+        self.settings_theme_frame = ttk.Frame(self.settings_window, padding=(10, 10), style='SettingsWindow.Card.TFrame')
+        self.settings_theme_frame.pack(padx=20, pady=20, fill="x", expand=False)
+        
+        # Ensure SettingsWindow.Card.TFrame is configured with current theme colors when window opens
+        s = ttk.Style(self) # Use existing style instance from App
+        s.configure('SettingsWindow.Card.TFrame', background=theme.BACKGROUND_CONTENT)
+        self.settings_theme_frame.configure(style='SettingsWindow.Card.TFrame')
+
+
+        self.settings_theme_label = ttk.Label(
+            self.settings_theme_frame, 
+            text="Select Theme:",
+            font=self.font_body_bold,
+            background=theme.BACKGROUND_CONTENT,
+            foreground=theme.TEXT_PRIMARY
+        )
+        self.settings_theme_label.pack(pady=(0, 10), anchor="w")
+
+        self.selected_theme_var = tk.StringVar(value=theme._current_theme_name) 
+
+        self.settings_light_theme_rb = ttk.Radiobutton(
+            self.settings_theme_frame,
+            text="Light Theme",
+            variable=self.selected_theme_var,
+            value="Light",
+            command=self._on_theme_selected, 
+            style='TRadiobutton'
+        )
+        self.settings_light_theme_rb.pack(anchor="w", padx=10)
+
+        self.settings_dark_theme_rb = ttk.Radiobutton(
+            self.settings_theme_frame,
+            text="Dark Theme",
+            variable=self.selected_theme_var,
+            value="Dark",
+            command=self._on_theme_selected, 
+            style='TRadiobutton'
+        )
+        self.settings_dark_theme_rb.pack(anchor="w", padx=10, pady=(0,5))
+        
+        # Apply current theme to radio buttons inside settings
+        s.configure('TRadiobutton', 
+                    font=self.font_body,
+                    background=theme.BACKGROUND_CONTENT, 
+                    foreground=theme.TEXT_PRIMARY)
+        s.map('TRadiobutton',
+              background=[('active', theme.BACKGROUND_CONTENT)],
+              indicatorcolor=[('selected', theme.COLOR_ACCENT), ('!selected', theme.TEXT_SECONDARY)])
+
+        # Center the settings window relative to the main app window
+        self.settings_window.update_idletasks() 
+        main_x = self.winfo_x()
+        main_y = self.winfo_y()
+        main_width = self.winfo_width()
+        main_height = self.winfo_height()
+
+        s_width = self.settings_window.winfo_width()
+        s_height = self.settings_window.winfo_height()
+        
+        if s_width == 1 or s_height == 1: # Window not drawn yet, use requested size
+            try:
+                geom_parts = self.settings_window.geometry().split('x') # "400x300" or "400x300+X+Y"
+                s_width = int(geom_parts[0])
+                s_height = int(geom_parts[1].split('+')[0])
+            except (ValueError, IndexError):
+                 s_width, s_height = 400, 300 # Fallback
+
+        center_x = main_x + (main_width - s_width) // 2
+        center_y = main_y + (main_height - s_height) // 2
+        self.settings_window.geometry(f"+{center_x}+{center_y}")
+
 
     # --- Formatting Helper Methods ---
     def _format_bytes(self, size_bytes):
@@ -273,33 +535,66 @@ class App(tk.Tk):
 
     def _gui_progress_hook(self, data): # Renamed 'd' to 'data' for clarity
         if data['status'] == 'downloading':
+            # Handle specific messages for simple downloads (like images)
+            message_override = data.get('message')
             percentage = data.get('percentage', 0.0)
-            downloaded_bytes = data.get('downloaded_bytes', 0)
-            total_bytes = data.get('total_bytes', 0)
-            speed_bytes_sec = data.get('speed', 0)
-            eta_seconds = data.get('eta', 0)
+            total_bytes = data.get('total_bytes', 0) or data.get('total_bytes_estimate', 0) # yt-dlp might use estimate
 
-            downloaded_str = self._format_bytes(downloaded_bytes)
-            total_str = self._format_bytes(total_bytes)
-            speed_str = self._format_speed(speed_bytes_sec)
-            eta_str = self._format_eta(eta_seconds)
-            
-            # Update progress bar (thread-safe)
-            final_percentage = max(0.0, min(100.0, percentage))
-            self.after(0, lambda: self.progress_bar.config(value=final_percentage))
-            
-            status_message = f"Downloading: {final_percentage:.1f}% ({downloaded_str} / {total_str}) at {speed_str}, ETA: {eta_str}"
-            self.update_status(status_message)
+            if message_override and (percentage == 0 and total_bytes == 0 and not data.get('speed')):
+                # This is likely a simple status message (e.g., "Downloading image...")
+                self.update_status(message_override)
+                if data.get('downloaded_bytes') is not None: # If we have downloaded bytes info, show indeterminate progress
+                    self.progress_bar.config(mode='indeterminate')
+                    self.progress_bar.start(10)
+                else: # For the very first message without byte info yet
+                    self.progress_bar.config(value=0, mode='determinate')
+
+            else: # Standard detailed progress for yt-dlp or image download with byte counts
+                self.progress_bar.config(mode='determinate') # Ensure determinate mode
+                self.progress_bar.stop() # Stop if it was indeterminate
+
+                downloaded_bytes = data.get('downloaded_bytes', 0)
+                speed_bytes_sec = data.get('speed', 0)
+                eta_seconds = data.get('eta', 0)
+
+                downloaded_str = self._format_bytes(downloaded_bytes)
+                total_str = self._format_bytes(total_bytes)
+                speed_str = self._format_speed(speed_bytes_sec)
+                eta_str = self._format_eta(eta_seconds)
+                
+                final_percentage = max(0.0, min(100.0, percentage if total_bytes > 0 else 0.0))
+                # If total_bytes is 0 but downloaded_bytes is positive (e.g. direct image chunk download without total size initially)
+                # we can't show a real percentage. Show indeterminate or just downloaded amount.
+                if total_bytes == 0 and downloaded_bytes > 0:
+                    status_message = f"Downloading: {downloaded_str} at {speed_str}"
+                    self.progress_bar.config(mode='indeterminate') # Or keep it determinate at 0 if preferred
+                    self.progress_bar.start(10)
+                elif total_bytes > 0 :
+                     status_message = f"Downloading: {final_percentage:.1f}% ({downloaded_str} / {total_str}) at {speed_str}, ETA: {eta_str}"
+                     self.after(0, lambda: self.progress_bar.config(value=final_percentage))
+                else: # total_bytes and downloaded_bytes are 0, but not a simple message_override
+                    status_message = "Downloading: Initializing..." # Or some other generic message
+                    self.after(0, lambda: self.progress_bar.config(value=0))
+                
+                self.update_status(status_message)
 
         elif data['status'] == 'finished':
+            self.progress_bar.stop() # Stop if it was indeterminate
+            self.progress_bar.config(mode='determinate')
             filename = data.get('filename', 'Unknown file')
             self.after(0, lambda: self.progress_bar.config(value=100))
-            self.update_status(f"Download finished: {os.path.basename(filename)}. Preparing for conversion...")
+            
+            # Determine if it was an image download to adjust message
+            if self.downloader._is_direct_image_url(self.url_var.get().strip()): # Check current URL
+                self.update_status(f"Image downloaded: {os.path.basename(filename)}")
+            else:
+                self.update_status(f"Download finished: {os.path.basename(filename)}. Preparing for conversion...")
         
         elif data['status'] == 'error':
+            self.progress_bar.stop() # Stop if it was indeterminate
+            self.progress_bar.config(mode='determinate')
             error_message = data.get('message', 'Unknown download error')
             self.update_status(f"Download Error: {error_message}")
-            # Reset progress bar on error
             self.after(0, lambda: self.progress_bar.config(value=0))
 
 
