@@ -1,9 +1,10 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, PhotoImage
 import os
 import threading
 import re # For cleaning ANSI codes from yt-dlp progress string
 
+import tkinter.font as tkFont # Import for font management
 # Ensure the script can find the core package when run directly
 if __name__ == "__main__" and __package__ is None:
     import sys
@@ -13,15 +14,106 @@ if __name__ == "__main__" and __package__ is None:
 
 from src.core.downloader import Downloader, DownloadError
 from src.core.converter import Converter, ConversionError
+from . import theme # Import the theme
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
+        self.configure(bg=theme.BACKGROUND_WINDOW) # Set main window background
 
         self.title("Media Downloader and Converter")
         self.geometry("700x450")  # Adjusted size for better layout
 
+        # --- Font Definitions ---
+        self.app_font_family = theme.FONT_FAMILY_PRIMARY # "Roboto"
+        self.font_body = tkFont.Font(family=self.app_font_family, size=theme.FONT_SIZE_NORMAL, weight=theme.FONT_WEIGHT_NORMAL)
+        self.font_body_bold = tkFont.Font(family=self.app_font_family, size=theme.FONT_SIZE_NORMAL, weight=theme.FONT_WEIGHT_BOLD)
+        self.font_small = tkFont.Font(family=self.app_font_family, size=theme.FONT_SIZE_SMALL, weight=theme.FONT_WEIGHT_NORMAL)
+        self.font_button = self.font_body_bold # Buttons use bold body font
+
+        # --- Icon Loading ---
+        self.download_icon_image = None # Initialize
+        try:
+            # Ensure theme.DOWNLOAD_ICON_BASE64 is valid base64 string for PhotoImage
+            self.download_icon_image = tk.PhotoImage(data=theme.DOWNLOAD_ICON_BASE64)
+        except tk.TclError:
+            print("Warning: Could not load download icon from base64 data. Check icon data and Tkinter/PhotoImage compatibility.")
+        except AttributeError:
+             print("Warning: DOWNLOAD_ICON_BASE64 not found in theme.py or theme module not imported correctly.")
+
+
+        # --- Style Configuration ---
+        style = ttk.Style(self)
+        # default_font = ("Helvetica", 10) # Using Helvetica as a common sans-serif # Old
+
+        # Global style configurations
+        style.configure('.', 
+                        font=self.font_body, # Apply new font_body
+                        background=theme.BACKGROUND_CONTENT, 
+                        foreground=theme.TEXT_PRIMARY_ON_LIGHT, 
+                        padding=(5, 5))
+
+        # Labels (TLabel)
+        style.configure('TLabel', 
+                        font=self.font_body, # Apply new font_body
+                        background=theme.BACKGROUND_CONTENT, 
+                        foreground=theme.TEXT_PRIMARY_ON_LIGHT, 
+                        padding=(5,5))
+        # Specific label for URL/Format description, now on the "card" (input_frame)
+        style.configure('InputDescription.TLabel', 
+                        font=self.font_body, # Apply new font_body
+                        background=theme.BACKGROUND_CONTENT, 
+                        foreground=theme.TEXT_PRIMARY_ON_LIGHT)
+
+        # Frame style for card-like appearance
+        style.configure('Card.TFrame', background=theme.BACKGROUND_CONTENT, relief='raised', borderwidth=1)
+
+
+        # Buttons (TButton)
+        style.configure('TButton',
+                        font=self.font_button, # Apply new font_button
+                        background=theme.COLOR_ACCENT,
+                        foreground=theme.TEXT_PRIMARY_ON_DARK,
+                        borderwidth=0,
+                        relief='flat',
+                        padding=(10, 8)) 
+        style.map('TButton',
+                  background=[('active', theme.COLOR_ACCENT_DARK), 
+                              ('disabled', theme.BACKGROUND_INPUT)],
+                  foreground=[('disabled', theme.TEXT_SECONDARY_ON_LIGHT)])
+
+        # Input Fields (TEntry)
+        style.configure('TEntry',
+                        font=self.font_body, # Apply new font_body
+                        fieldbackground=theme.BACKGROUND_CONTENT,
+                        foreground=theme.TEXT_PRIMARY_ON_LIGHT,
+                        borderwidth=1, 
+                        relief='solid',
+                        padding=(5,5))
+        # TODO: Set insertcolor directly on widget instance for TEntry
+        # self.url_entry.configure(insertbackground=theme.TEXT_PRIMARY_ON_LIGHT)
+        style.map('TEntry',
+                  bordercolor=[('focus', theme.COLOR_ACCENT)],
+                  relief=[('focus', 'solid')])
+
+
+        # OptionMenu (TMenubutton)
+        style.configure('TMenubutton',
+                        font=self.font_body, # Apply new font_body
+                        background=theme.BACKGROUND_CONTENT, 
+                        foreground=theme.TEXT_PRIMARY_ON_LIGHT,
+                        relief='flat', 
+                        padding=(5,5),
+                        borderwidth=1) 
+
+        # Progress Bar (Horizontal.TProgressbar)
+        style.configure('Horizontal.TProgressbar',
+                        background=theme.COLOR_ACCENT, # Color of the bar itself
+                        troughcolor=theme.BACKGROUND_INPUT, # Background of the trough
+                        borderwidth=0,
+                        relief='flat')
+        
         # Core components
         self.downloader = Downloader()
         self.converter = Converter()
@@ -29,47 +121,109 @@ class App(tk.Tk):
         os.makedirs(self.download_dir, exist_ok=True)
 
         # --- UI Elements ---
-        self.grid_columnconfigure(1, weight=1) # Allow entry and menu to expand
+        self.grid_columnconfigure(0, weight=1) # Main content frame column
+        self.grid_rowconfigure(3, weight=1) # Status area row
+
+        # --- Main Content Frame ---
+        main_content_frame = ttk.Frame(self, padding=(10,10))
+        main_content_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=(10,0)) # Pad X, and Top only for main frame
+        main_content_frame.grid_columnconfigure(0, weight=1) # Allow content within to expand
+
+        # --- Input Frame for URL and Format (Card-like) ---
+        input_frame = ttk.Frame(main_content_frame, padding=(15,15), style='Card.TFrame')
+        input_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0,10)) # Spacing below input card
+        input_frame.grid_columnconfigure(1, weight=1) # Allow entry and menu to expand within this frame
 
         # Media URL
-        self.url_label = ttk.Label(self, text="Media URL:")
-        self.url_label.grid(row=0, column=0, padx=10, pady=10, sticky="w")
-        self.url_entry = ttk.Entry(self, width=60)
-        self.url_entry.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
+        self.url_label = ttk.Label(input_frame, text="Media URL:", style='InputDescription.TLabel')
+        self.url_label.grid(row=0, column=0, padx=(0,10), pady=(0,10), sticky="w") # Increased internal padding
+        self.url_entry = ttk.Entry(input_frame, width=60) 
+        self.url_entry.grid(row=0, column=1, pady=(0,10), sticky="ew")
 
         # Output Format
-        self.format_label = ttk.Label(self, text="Output Format:")
-        self.format_label.grid(row=1, column=0, padx=10, pady=5, sticky="w")
-        self.format_options = ["mp4", "mp3", "avi", "mov", "webm"] # Lowercase, added webm
+        self.format_label = ttk.Label(input_frame, text="Output Format:", style='InputDescription.TLabel')
+        self.format_label.grid(row=1, column=0, padx=(0,10), pady=(0,5), sticky="w") # Increased internal padding
+        self.format_options = ["mp4", "mp3", "avi", "mov", "webm"] 
         self.format_var = tk.StringVar(self)
-        self.format_var.set(self.format_options[0]) # Default value
-        self.format_menu = ttk.OptionMenu(self, self.format_var, self.format_options[0], *self.format_options)
-        self.format_menu.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
+        self.format_var.set(self.format_options[0]) 
+        self.format_menu = ttk.OptionMenu(input_frame, self.format_var, self.format_options[0], *self.format_options) 
+        self.format_menu.grid(row=1, column=1, pady=(0,5), sticky="ew")
 
-        # Download & Convert Button
-        self.download_button = ttk.Button(self, text="Download & Convert", command=self.start_download_and_convert)
-        self.download_button.grid(row=2, column=0, columnspan=2, padx=10, pady=15)
+        # Download & Convert Button - Centered below input_frame
+        button_config = {
+            "text": "Download & Convert",
+            "command": self.start_download_and_convert,
+            "style": 'TButton'
+        }
+        if self.download_icon_image:
+            button_config["image"] = self.download_icon_image
+            button_config["compound"] = 'left'
+        
+        self.download_button = ttk.Button(main_content_frame, **button_config)
+        self.download_button.grid(row=1, column=0, columnspan=2, pady=15) 
 
-        # Progress Bar
-        self.progress_bar = ttk.Progressbar(self, orient="horizontal", length=400, mode="determinate")
-        self.progress_bar.grid(row=3, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
+        # Progress Bar - Placed below the button
+        self.progress_bar = ttk.Progressbar(main_content_frame, orient="horizontal", length=400, mode="determinate") 
+        self.progress_bar.grid(row=2, column=0, columnspan=2, sticky="ew", pady=10) # Increased pady
 
-        # Status Messages
-        self.status_text_frame = ttk.Frame(self) # Frame for Text and Scrollbar
-        self.status_text_frame.grid(row=4, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
+        # Status Messages - Frame and Text widget
+        # This frame will also be part of main_content_frame for consistent padding from window edges
+        self.status_text_frame = ttk.Frame(main_content_frame) 
+        self.status_text_frame.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=(0,5)) # pady adjusted
         self.status_text_frame.grid_rowconfigure(0, weight=1)
         self.status_text_frame.grid_columnconfigure(0, weight=1)
+        
+        main_content_frame.grid_rowconfigure(3, weight=1) # Allow status_text_frame to expand within main_content_frame
 
-        self.status_text = tk.Text(self.status_text_frame, height=10, width=80, state="disabled", wrap=tk.WORD)
+        self.status_text = tk.Text(self.status_text_frame, 
+                                 height=10, width=80, # Width might be less critical if it expands
+                                 state="disabled", wrap=tk.WORD,
+                                 bg=theme.BACKGROUND_CONTENT, 
+                                 fg=theme.TEXT_SECONDARY_ON_LIGHT,
+                                 font=self.font_small, # Apply new font_small
+                                 relief='solid', 
+                                 borderwidth=1,
+                                 padx=10, pady=10) 
         self.status_text.grid(row=0, column=0, sticky="nsew")
+        # TODO: Set insertcolor for status_text if it becomes editable
         
         self.scrollbar = ttk.Scrollbar(self.status_text_frame, orient=tk.VERTICAL, command=self.status_text.yview)
         self.status_text.config(yscrollcommand=self.scrollbar.set)
         self.scrollbar.grid(row=0, column=1, sticky="ns")
         
-        self.grid_rowconfigure(4, weight=1) # Allow status_text_frame to expand
-
         self.update_status("Ready. Enter a URL and select a format.")
+
+    # --- Formatting Helper Methods ---
+    def _format_bytes(self, size_bytes):
+        if size_bytes is None or size_bytes < 0: return "N/A"
+        if size_bytes == 0: return "0 B"
+        import math
+        size_name = ("B", "KB", "MB", "GB", "TB")
+        i = int(math.floor(math.log(size_bytes, 1024)))
+        if i >= len(size_name): i = len(size_name) - 1 # Cap at TB to avoid index error
+        p = math.pow(1024, i)
+        s = round(size_bytes / p, 2)
+        return f"{s} {size_name[i]}"
+
+    def _format_eta(self, seconds):
+        if seconds is None or seconds < 0: return "--:--"
+        try:
+            seconds = int(seconds)
+            m, s = divmod(seconds, 60)
+            h, m = divmod(m, 60)
+            if h > 0:
+                return f"{h:02d}:{m:02d}:{s:02d}"
+            return f"{m:02d}:{s:02d}"
+        except (ValueError, TypeError):
+            return "--:--"
+
+    def _format_speed(self, speed_bytes_sec):
+        if speed_bytes_sec is None or speed_bytes_sec < 0: return "N/A"
+        if speed_bytes_sec == 0: return "0 B/s"
+        # Re-use _format_bytes logic for unit conversion
+        formatted_size = self._format_bytes(speed_bytes_sec)
+        if formatted_size == "N/A": return "N/A" # Should not happen if input is valid
+        return f"{formatted_size}/s"
 
     def _get_unique_filepath(self, filepath):
         if not os.path.exists(filepath):
@@ -117,47 +271,55 @@ class App(tk.Tk):
         thread.daemon = True # Allow main program to exit even if threads are running
         thread.start()
 
-    def _gui_progress_hook(self, d):
-        if d['status'] == 'downloading':
-            # yt-dlp progress fields: _percent_str, _total_bytes_str, _speed_str, _eta_str
-            percent_str = d.get('_percent_str', '0.0%')
-            # Clean ANSI escape codes (like color codes) that yt-dlp might output
-            cleaned_percent_str = re.sub(r'\x1b\[[0-9;]*m', '', percent_str)
+    def _gui_progress_hook(self, data): # Renamed 'd' to 'data' for clarity
+        if data['status'] == 'downloading':
+            percentage = data.get('percentage', 0.0)
+            downloaded_bytes = data.get('downloaded_bytes', 0)
+            total_bytes = data.get('total_bytes', 0)
+            speed_bytes_sec = data.get('speed', 0)
+            eta_seconds = data.get('eta', 0)
+
+            downloaded_str = self._format_bytes(downloaded_bytes)
+            total_str = self._format_bytes(total_bytes)
+            speed_str = self._format_speed(speed_bytes_sec)
+            eta_str = self._format_eta(eta_seconds)
             
-            try:
-                # Extract numeric part of percentage
-                match = re.search(r'(\d+\.?\d*)%', cleaned_percent_str)
-                if match:
-                    p_numeric = float(match.group(1))
-                    # Update progress bar (thread-safe)
-                    self.after(0, lambda: self.progress_bar.config(value=p_numeric))
-                else:
-                    p_numeric = None # Cannot parse
+            # Update progress bar (thread-safe)
+            final_percentage = max(0.0, min(100.0, percentage))
+            self.after(0, lambda: self.progress_bar.config(value=final_percentage))
+            
+            status_message = f"Downloading: {final_percentage:.1f}% ({downloaded_str} / {total_str}) at {speed_str}, ETA: {eta_str}"
+            self.update_status(status_message)
 
-                total_bytes_str = d.get('_total_bytes_str', 'N/A')
-                speed_str = d.get('_speed_str', 'N/A')
-                eta_str = d.get('_eta_str', 'N/A')
-                
-                self.update_status(f"Downloading: {cleaned_percent_str} of {total_bytes_str} at {speed_str} ETA {eta_str}")
-
-            except Exception as e:
-                self.update_status(f"Error parsing progress: {e}")
-
-        elif d['status'] == 'finished':
-            self.update_status(f"Download finished: {d.get('filename', 'Unknown file')}. Preparing for conversion...")
-            self.after(0, lambda: self.progress_bar.config(value=100)) # Briefly show 100% for download
+        elif data['status'] == 'finished':
+            filename = data.get('filename', 'Unknown file')
+            self.after(0, lambda: self.progress_bar.config(value=100))
+            self.update_status(f"Download finished: {os.path.basename(filename)}. Preparing for conversion...")
         
-        elif d['status'] == 'error':
-            self.update_status("Error during download (reported by yt-dlp hook).")
+        elif data['status'] == 'error':
+            error_message = data.get('message', 'Unknown download error')
+            self.update_status(f"Download Error: {error_message}")
+            # Reset progress bar on error
+            self.after(0, lambda: self.progress_bar.config(value=0))
 
 
     def _download_and_convert_thread(self, url, output_format_selected):
         downloaded_file_path = None
         try:
             self.update_status(f"Fetching URL: {url}")
+            
+            # Construct preferred_format_info based on user's selection
+            preferred_format_info = {'format_id': output_format_selected.lower()}
+            self.update_status(f"Requesting format '{output_format_selected.lower()}' from downloader.")
+
             # Note: The progress_callback is called by yt-dlp from its own thread context.
             # The _gui_progress_hook uses self.after to marshal GUI updates to the main Tk thread.
-            downloaded_file_path = self.downloader.download_media(url, self.download_dir, progress_callback=self._gui_progress_hook)
+            downloaded_file_path = self.downloader.download_media(
+                url, 
+                self.download_dir, 
+                preferred_format_info=preferred_format_info, # Pass the preferred format
+                progress_callback=self._gui_progress_hook
+            )
             
             if not downloaded_file_path or not os.path.exists(downloaded_file_path):
                 self.update_status(f"Download failed: File not found at expected path '{downloaded_file_path}'. Please check the URL and try again.")

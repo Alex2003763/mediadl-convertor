@@ -8,6 +8,7 @@ class DownloadError(Exception):
 class Downloader:
     def __init__(self):
         self.progress_callback = None
+        self.last_ydl_opts = None # For testing/inspection
 
     def _progress_hook(self, d):
         if d['status'] == 'downloading':
@@ -28,10 +29,10 @@ class Downloader:
                     'total_bytes': total_bytes,
                     'downloaded_bytes': downloaded_bytes,
                     'percentage': percentage,
-                    'speed': speed if speed is not None else 0, # bytes/sec
-                    'eta': eta if eta is not None else 0 # seconds
+                    'speed': speed if speed is not None else 0, 
+                    'eta': eta if eta is not None else 0 
                 })
-            else: # Default console output if no callback
+            else: 
                 print(f"Downloading: {percentage:.2f}% of {total_bytes or 'Unknown'} bytes at {speed_str}, ETA: {eta_str}")
 
         elif d['status'] == 'finished':
@@ -55,177 +56,195 @@ class Downloader:
             else:
                 print("Error during download (reported by hook).")
 
-
-    def download_media(self, url: str, download_path: str, progress_callback=None) -> str:
-        """
-        Downloads media from the given URL to the specified path.
-
-        Args:
-            url: The URL of the media to download.
-            download_path: The directory where the media should be saved.
-            progress_callback: An optional function to call with progress updates.
-                               The callback will receive a dictionary with progress info.
-
-        Returns:
-            The full path to the downloaded file.
-
-        Raises:
-            DownloadError: If any error occurs during the download process.
-        """
+    def download_media(self, url: str, download_path: str, preferred_format_info=None, progress_callback=None) -> str:
         self.progress_callback = progress_callback
-        
-        # Ensure download path exists
         os.makedirs(download_path, exist_ok=True)
 
         ydl_opts = {
-            'format': 'bestvideo+bestaudio/best', # Download best quality video and audio
-            'outtmpl': os.path.join(download_path, '%(title)s.%(ext)s'), # Save in download_path
+            'outtmpl': os.path.join(download_path, '%(title)s.%(ext)s'),
             'progress_hooks': [self._progress_hook],
-            'nocheckcertificate': True, # Sometimes useful for avoiding SSL issues with certain sites
-            # 'quiet': True, # Suppress yt-dlp direct console output if we have a callback. Keep it false for now for debugging.
-            'noplaylist': True, # Download only single video if URL is part of a playlist
-            'merge_output_format': None, # if format is 'best', yt-dlp handles merge to default (mkv/mp4)
+            'nocheckcertificate': True,
+            'quiet': True, 
+            'no_warnings': True,
+            'noplaylist': True, 
         }
-        
-        # If there's a progress callback, we can be quiet. Otherwise, let yt-dlp print some info.
-        # For now, keeping quiet=False to see all yt-dlp output during debugging.
-        if progress_callback:
-            ydl_opts['quiet'] = True # Be quiet if we have a callback
-        else:
-            ydl_opts['quiet'] = False # Show yt-dlp native output if no callback
 
+        # Clear any format-specific options that might linger if not set by current logic
+        ydl_opts.pop('merge_output_format', None)
+        ydl_opts.pop('postprocessors', None)
+        ydl_opts.pop('extract_audio', None)
+        ydl_opts.pop('audio_format', None)
+        
+        p_format_id = None
+        if preferred_format_info and preferred_format_info.get('format_id'):
+            p_format_id = preferred_format_info['format_id'].lower()
+
+        if p_format_id == 'mp4':
+            ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/best[ext=mp4]/best'
+            ydl_opts['merge_output_format'] = 'mp4'
+            ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
+        elif p_format_id == 'webm':
+            ydl_opts['format'] = 'bestvideo[ext=webm]+bestaudio[ext=webm]/best[ext=webm]/best'
+            ydl_opts['merge_output_format'] = 'webm'
+            ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'webm'}]
+        elif p_format_id == 'mp3':
+            ydl_opts['format'] = 'bestaudio/best'
+            ydl_opts['extract_audio'] = True
+            ydl_opts['audio_format'] = 'mp3'
+            ydl_opts['postprocessors'] = [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192', 
+            }]
+            ydl_opts.pop('merge_output_format', None) 
+        elif p_format_id is not None: 
+            # Fallback for other formats (avi, mov, wav etc.) -> download high-quality MP4 as source.
+            ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/best[ext=mp4]/best'
+            ydl_opts['merge_output_format'] = 'mp4'
+            ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
+        else: 
+            # True default: preferred_format_info is None or has no format_id.
+            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+            # No specific merge or postprocessors for format conversion needed here.
+
+        if not progress_callback:
+            ydl_opts['quiet'] = False 
+        
+        self.last_ydl_opts = ydl_opts.copy()
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True) # Download directly
-                
+                info = ydl.extract_info(url, download=True)
                 filename = ydl.prepare_filename(info) if info else None
-
-                if not filename: # If, for some reason, prepare_filename failed or info was None
-                    # This part is tricky as yt-dlp might have downloaded something without full info dict
-                    # Or it might have failed before even getting info.
-                    # We need to rely on the hook for 'finished' status or error.
-                    # If the hook reported finished, it should have provided the filename.
-                    # If an error occurred, it should be caught by the exception handlers.
-                    # This is a fallback, but might not always work.
-                    # Look for files in the download_path that might have been downloaded
-                    # This is not robust. Best to rely on yt-dlp's info.
-                    # For now, if filename is None after download, it's an issue.
-                    raise DownloadError("Could not determine filename after download process.")
-
-            # The hook should have updated status to 'finished' and provided filename
-            # If we are here, and an exception wasn't raised, it means ydl.download completed.
-            # The filename is taken from ydl.prepare_filename(info)
+                if not filename:
+                    raise DownloadError("Could not determine filename, possibly due to an issue with URL or initial processing.")
             
-            # Verify file existence based on the prepared filename
             if not os.path.exists(filename):
-                # It's possible the 'outtmpl' resulted in a different extension after merge
-                # Let's try to find the file if the extension is different (e.g. webm -> mkv)
                 base, _ = os.path.splitext(filename)
                 possible_files = [f for f in os.listdir(download_path) if f.startswith(os.path.basename(base))]
                 if possible_files:
                     filename = os.path.join(download_path, possible_files[0])
-                
-                if not os.path.exists(filename): # Check again
-                    raise DownloadError(f"File not found after download attempt: {filename}. It might be an issue with filename generation or the download itself.")
-
+                if not os.path.exists(filename):
+                    raise DownloadError(f"File not found after download and postprocessing: {filename}")
             return filename
-        
         except yt_dlp.utils.DownloadError as e:
             err_str = str(e).lower()
             if "is not a valid url" in err_str or "unsupported url" in err_str:
                 raise DownloadError(f"Invalid or unsupported URL: {url}. Original error: {e}")
             elif "ffmpeg is not installed" in err_str:
-                 raise DownloadError(f"FFmpeg not found. It's required for merging formats. Please install FFmpeg. Original error: {e}")
-            # Add more specific error checks here as needed
+                 raise DownloadError(f"FFmpeg not found. It's required for merging or format conversion. Original error: {e}")
             raise DownloadError(f"yt-dlp download error: {e}")
         except Exception as e:
-            # Catching generic Exception to provide more context if it's not a DownloadError
-            raise DownloadError(f"An unexpected error occurred in downloader: {type(e).__name__} - {e}")
+            raise DownloadError(f"Unexpected error in downloader: {type(e).__name__} - {e}")
 
 if __name__ == "__main__":
     downloader = Downloader()
-    
-    # Example URL (Creative Commons): Big Buck Bunny - quite large
-    # test_url = "https://www.youtube.com/watch?v=aqz-KE-bpKQ" 
-    # Using a shorter, smaller Creative Commons video for quicker tests
-    test_url = "https://www.youtube.com/watch?v=C0DPdy98e4c" # LEGO Star Wars Stop Motion (CC) 2min
-    # test_url = "https://commons.wikimedia.org/wiki/File:Example.ogv" # Very short OGV video
-
-    download_directory = "assets/downloads"
+    test_url = "https://www.youtube.com/watch?v=C0DPdy98e4c" 
+    download_directory = "assets/downloads_test" 
     os.makedirs(download_directory, exist_ok=True)
 
-
+    if os.path.exists(download_directory):
+        for item in os.listdir(download_directory):
+            item_path = os.path.join(download_directory, item)
+            if os.path.isfile(item_path):
+                try:
+                    os.remove(item_path)
+                except OSError as e:
+                    print(f"Warning: Could not remove file {item_path} during cleanup: {e}")
+    
     def console_progress_callback(progress_data):
         if progress_data['status'] == 'downloading':
-            speed_val = progress_data.get('speed', 0) or 0
-            eta_val = progress_data.get('eta', 0) or 0
-            total_bytes_val = progress_data.get('total_bytes',0) or 0
-            percentage_val = progress_data.get('percentage', 0) or 0
-
-            print(f"Status: {progress_data['status']}, "
-                  f"{percentage_val:.2f}% of {total_bytes_val}B, "
-                  f"Speed: {speed_val:.2f} B/s, ETA: {eta_val}s")
+            print(f"TestCB: DLing {progress_data.get('percentage',0):.1f}%")
         elif progress_data['status'] == 'finished':
-            print(f"Status: {progress_data['status']}, File: {progress_data.get('filename')}")
-            print(f"Downloaded to: {progress_data.get('filename')}")
-        elif progress_data['status'] == 'error':
-            print(f"Status: error during download. Message: {progress_data.get('message')}")
-
-    print(f"Attempting to download: {test_url} to {download_directory}")
-    
-    # Clean up previous downloads of the test video to ensure fresh download
-    # This is a bit simplistic; assumes yt-dlp default naming for this URL.
-    # A more robust cleanup would parse the title from the URL or a preliminary info extraction.
-    # For now, let's try to remove potential variations.
-    expected_title_part = "LEGO Star Wars Stop Motion" 
-    for item in os.listdir(download_directory):
-        if expected_title_part in item:
-            try:
-                os.remove(os.path.join(download_directory, item))
-                print(f"Removed old test file: {item}")
-            except OSError as e:
-                print(f"Error removing old test file {item}: {e}")
-
+            fn = progress_data.get('filename','')
+            if fn: 
+                print(f"TestCB: Finished {os.path.basename(fn)}")
+            else:
+                print("TestCB: Finished (filename not provided in hook data)")
 
     try:
-        print("\n--- Test with console_progress_callback ---")
-        downloaded_file_path = downloader.download_media(test_url, download_directory, progress_callback=console_progress_callback)
-        print(f"Successfully downloaded (with callback): {downloaded_file_path}")
-        assert os.path.exists(downloaded_file_path), f"File {downloaded_file_path} does not exist after download."
+        print(f"\n--- Test 1: Default (preferred_format_info=None) -> Best quality, yt-dlp decides container ---")
+        file_def = downloader.download_media(url=test_url, download_path=download_directory, preferred_format_info=None, progress_callback=console_progress_callback)
+        print(f"Default DL to: {os.path.basename(file_def)}")
+        print(f"  Opts: format='{downloader.last_ydl_opts.get('format')}', merge='{downloader.last_ydl_opts.get('merge_output_format')}', postprocs={downloader.last_ydl_opts.get('postprocessors')}, extract_audio={downloader.last_ydl_opts.get('extract_audio')}")
+        assert os.path.exists(file_def)
+        assert downloader.last_ydl_opts.get('format') == 'bestvideo+bestaudio/best'
+        assert 'merge_output_format' not in downloader.last_ydl_opts 
+        assert 'postprocessors' not in downloader.last_ydl_opts 
+        assert 'extract_audio' not in downloader.last_ydl_opts 
+        if os.path.exists(file_def): os.remove(file_def)
 
-        print("\n--- Test with internal printing (no callback) ---")
-        # To ensure it downloads again and tests the 'already downloaded path', we'd ideally rename or delete
-        # For simplicity in this test, we'll let it be potentially skipped by yt-dlp if not cleaned,
-        # but the goal is to test the internal printing path.
-        # A better test would use a different URL or ensure cleanup.
-        # For now, let's assume the previous cleanup was sufficient or yt-dlp handles re-download/skip.
-        
-        # To force re-download for testing internal print, remove the previously downloaded file
-        if os.path.exists(downloaded_file_path):
-             os.remove(downloaded_file_path)
-             print(f"Removed {downloaded_file_path} for the second test run.")
+        print(f"\n--- Test 2: Preferred MP4 ---")
+        file_mp4 = downloader.download_media(url=test_url, download_path=download_directory, preferred_format_info={'format_id': 'mp4'}, progress_callback=console_progress_callback)
+        print(f"MP4 DL to: {os.path.basename(file_mp4)}")
+        print(f"  Opts: format='{downloader.last_ydl_opts.get('format')}', merge='{downloader.last_ydl_opts.get('merge_output_format')}', postprocs={downloader.last_ydl_opts.get('postprocessors')}")
+        assert os.path.exists(file_mp4) and file_mp4.lower().endswith(".mp4")
+        assert 'bestvideo[ext=mp4]' in downloader.last_ydl_opts.get('format', '')
+        assert downloader.last_ydl_opts.get('merge_output_format') == 'mp4'
+        assert downloader.last_ydl_opts.get('postprocessors') == [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
+        if os.path.exists(file_mp4): os.remove(file_mp4)
 
-        downloaded_file_path_no_cb = downloader.download_media(test_url, download_directory) # No callback
-        print(f"Successfully downloaded (no callback): {downloaded_file_path_no_cb}")
-        assert os.path.exists(downloaded_file_path_no_cb), f"File {downloaded_file_path_no_cb} does not exist after download."
+        print(f"\n--- Test 3: Preferred WebM (no callback -> quiet=False) ---")
+        file_webm = downloader.download_media(url=test_url, download_path=download_directory, preferred_format_info={'format_id': 'webm'}, progress_callback=None)
+        print(f"WebM DL to: {os.path.basename(file_webm)}")
+        print(f"  Opts: format='{downloader.last_ydl_opts.get('format')}', merge='{downloader.last_ydl_opts.get('merge_output_format')}', postprocs={downloader.last_ydl_opts.get('postprocessors')}, quiet={downloader.last_ydl_opts.get('quiet')}")
+        assert os.path.exists(file_webm) and file_webm.lower().endswith(".webm")
+        assert '[ext=webm]' in downloader.last_ydl_opts.get('format', '') 
+        assert downloader.last_ydl_opts.get('merge_output_format') == 'webm'
+        assert downloader.last_ydl_opts.get('postprocessors') == [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'webm'}]
+        assert downloader.last_ydl_opts.get('quiet') == False
+        if os.path.exists(file_webm): os.remove(file_webm)
 
-        print("\n--- Test with an invalid URL ---")
+        print(f"\n--- Test 4: Preferred MP3 (audio extraction) ---")
+        file_mp3 = downloader.download_media(url=test_url, download_path=download_directory, preferred_format_info={'format_id': 'mp3'}, progress_callback=console_progress_callback)
+        print(f"MP3 DL to: {os.path.basename(file_mp3)}")
+        print(f"  Opts: format='{downloader.last_ydl_opts.get('format')}', extract_audio={downloader.last_ydl_opts.get('extract_audio')}, audio_fmt='{downloader.last_ydl_opts.get('audio_format')}', postprocs={downloader.last_ydl_opts.get('postprocessors')}")
+        assert os.path.exists(file_mp3) and file_mp3.lower().endswith(".mp3")
+        assert downloader.last_ydl_opts.get('format') == 'bestaudio/best'
+        assert downloader.last_ydl_opts.get('extract_audio') == True
+        assert downloader.last_ydl_opts.get('audio_format') == 'mp3'
+        assert downloader.last_ydl_opts.get('postprocessors') == [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
+        assert 'merge_output_format' not in downloader.last_ydl_opts 
+        if os.path.exists(file_mp3): os.remove(file_mp3)
+
+        print(f"\n--- Test 5: Preferred AVI (fallback to MP4 source) ---")
+        file_avi_src = downloader.download_media(url=test_url, download_path=download_directory, preferred_format_info={'format_id': 'avi'}, progress_callback=console_progress_callback)
+        print(f"AVI source (MP4) DL to: {os.path.basename(file_avi_src)}")
+        print(f"  Opts: format='{downloader.last_ydl_opts.get('format')}', merge='{downloader.last_ydl_opts.get('merge_output_format')}', postprocs={downloader.last_ydl_opts.get('postprocessors')}")
+        assert os.path.exists(file_avi_src) and file_avi_src.lower().endswith(".mp4") 
+        assert 'bestvideo[ext=mp4]' in downloader.last_ydl_opts.get('format', '') 
+        assert downloader.last_ydl_opts.get('merge_output_format') == 'mp4'
+        assert downloader.last_ydl_opts.get('postprocessors') == [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
+        if os.path.exists(file_avi_src): os.remove(file_avi_src)
+
+        print("\n--- Test 6: Invalid URL ---")
         invalid_url = "htp://invalid.url.thisdoesnotexist"
         try:
-            downloader.download_media(invalid_url, download_directory, progress_callback=console_progress_callback)
+            downloader.download_media(url=invalid_url, download_path=download_directory, preferred_format_info=None)
         except DownloadError as e:
             print(f"Correctly caught DownloadError for invalid URL: {e}")
-        
-        print("\n--- Test with a (likely) unsupported URL type ---")
-        unsupported_url = "https://www.google.com" # Not a media page
-        try:
-            downloader.download_media(unsupported_url, download_directory, progress_callback=console_progress_callback)
-        except DownloadError as e:
-            print(f"Correctly caught DownloadError for non-media URL: {e}")
-
 
     except DownloadError as e:
-        print(f"\nDownload failed: {e}")
+        print(f"A DL test failed: {e}")
     except Exception as e:
-        print(f"\nAn unexpected error in main: {type(e).__name__} - {e}")
+        print(f"Unexpected error in main: {type(e).__name__} - {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        if os.path.exists(download_directory): 
+            for item in os.listdir(download_directory):
+                 item_path = os.path.join(download_directory, item)
+                 if os.path.isfile(item_path):
+                    try:
+                        os.remove(item_path)
+                    except OSError as e:
+                         print(f"Warning: Could not remove file {item_path} during final cleanup: {e}")
+            try:
+                if not os.listdir(download_directory): 
+                     os.rmdir(download_directory)
+                else:
+                     print(f"Warning: Test download directory {download_directory} not empty, not removing.")
+            except OSError as e:
+                print(f"Warning: Could not remove directory {download_directory}: {e}")
+        print("\nTests finished.")
+```
