@@ -16,7 +16,7 @@ THEMES = {
         "COLOR_ACCENT": "#E91E63",  # Pink 500
         "COLOR_ACCENT_DARK": "#C2185B", # Pink 700
         "COLOR_ACCENT_LIGHT": "#F8BBD0", # Pink 100
-        "TEXT_PRIMARY": "#212121",  # Almost Black (on light backgrounds)
+        "TEXT_PRIMARY": "#000000",  # True Black (on light backgrounds)
         "TEXT_SECONDARY": "#757575",  # Medium Grey (on light backgrounds)
         "TEXT_HINT": "#BDBDBD", # Light Grey for hints (on light backgrounds)
         "BACKGROUND_WINDOW": "#F5F5F5",  # Light Grey - typical Material background
