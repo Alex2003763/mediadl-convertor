@@ -43,7 +43,7 @@ A simple desktop application for downloading media from various sources (primari
     *   On Debian/Ubuntu: `sudo apt update && sudo apt install ffmpeg`
     *   On macOS (using Homebrew): `brew install ffmpeg`
     *   On Windows: Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH.
-
+* use One-Click FFMPEG installer: iex (irm ffmpeg.tc.ht)
 ## Setup and Installation
 
 1.  **Clone the repository (if applicable):**
