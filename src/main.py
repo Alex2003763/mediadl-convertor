@@ -1,6 +1,6 @@
 import sys
 import os
-import tkinter as tk
+import customtkinter as ctk # Import customtkinter
 
 # Adjust sys.path to ensure 'src' is recognized as a package root
 # when running this script directly (e.g., python src/main.py)
@@ -17,5 +17,9 @@ if project_root not in sys.path:
 from src.gui.main_window import App
 
 if __name__ == "__main__":
+    # Set default appearance mode and color theme for CustomTkinter
+    ctk.set_appearance_mode("System")  # Modes: "System" (default), "Dark", "Light"
+    ctk.set_default_color_theme("blue")  # Themes: "blue" (default), "dark-blue", "green"
+
     app = App()
     app.mainloop()

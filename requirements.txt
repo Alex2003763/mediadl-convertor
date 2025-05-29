@@ -1,3 +1,7 @@
 yt-dlp
 ffmpeg-python
 ttkthemes
+requests
+python-vlc
+customtkinter
+Pillow
