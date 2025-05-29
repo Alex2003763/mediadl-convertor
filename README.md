@@ -1,99 +1,108 @@
-# Media Downloader and Converter
+# mediadl-convertor
 
-A simple desktop application for downloading media from various sources (primarily using `yt-dlp`) and converting it to different formats (using `ffmpeg`).
+"MediaDL-Convertor is a powerful tool that simplifies downloading and converting media files, perfect for users who need quick and efficient media processing with minimal effort."
 
-## Features
+## Table of Contents
 
-*   Download media from URLs supported by `yt-dlp`.
-*   Convert downloaded media to formats like MP4, MP3, AVI, MOV, WebM.
-*   User-friendly GUI with progress display and status messages.
-*   Handles potential filename conflicts by creating unique filenames (e.g., `video_1.mp4`).
+- [About The Project](#about-the-project)
+- [Key Features](#key-features)
+- [Built With](#built-with)
+- [Getting Started](#getting-started)
+- [Contributing](#contributing)
+- [License](#license)
+- [Contact](#contact)
 
-## Project Structure
+## About The Project
 
-```
-.
-├── assets/                # For any static assets (not used in current version)
-│   ├── downloads/         # (Created by downloader.py tests)
-│   └── converted/         # (Created by converter.py tests)
-├── downloads/             # Default output directory for the GUI application
-├── src/
-│   ├── __init__.py
-│   ├── core/              # Core logic for downloading and conversion
-│   │   ├── __init__.py
-│   │   ├── downloader.py
-│   │   └── converter.py
-│   ├── gui/               # GUI components
-│   │   ├── __init__.py
-│   │   └── main_window.py
-│   └── main.py            # Main entry point for the application
-├── tests/                 # Unit tests
-│   ├── __init__.py
-│   ├── test_downloader.py
-│   └── test_converter.py
-├── requirements.txt       # Python dependencies
-└── README.md
-```
+Media Downloader and Converter is a desktop application designed to simplify the process of downloading media from various online sources (primarily using `yt-dlp`) and converting it to different formats (using `ffmpeg`). The application features a user-friendly GUI with progress display and status messages, making it accessible for users of all skill levels. It handles filename conflicts by creating unique filenames and supports multiple output formats including MP4, MP3, AVI, MOV, and WebM.
 
-## Prerequisites
+## Key Features
 
-*   Python 3.x
-*   `pip` (Python package installer)
-*   `ffmpeg` (must be installed and available in the system PATH)
-    *   On Debian/Ubuntu: `sudo apt update && sudo apt install ffmpeg`
-    *   On macOS (using Homebrew): `brew install ffmpeg`
-    *   On Windows: Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH.
+- Download media from URLs supported by `yt-dlp`
+- Convert downloaded media to formats like MP4, MP3, AVI, MOV, WebM
+- User-friendly GUI with progress display and status messages
+- Handles filename conflicts by creating unique filenames (e.g., `video_1.mp4`)
 
-## Setup and Installation
+## Built With
 
-1.  **Clone the repository (if applicable):**
-    ```bash
-    # git clone <repository_url>
-    # cd <repository_directory>
-    ```
+- TeX
+- Python
+- yt-dlp
+- ffmpeg-python
+- ttkthemes
+- customtkinter
+- Pillow
+- python-vlc
 
-2.  **Create a virtual environment (recommended):**
-    ```bash
-    python -m venv venv
-    ```
-    Activate it:
-    *   On Windows: `venv\Scripts\activate`
-    *   On macOS/Linux: `source venv/bin/activate`
+## Getting Started
 
-3.  **Install dependencies:**
-    Make sure `ffmpeg` is installed and accessible in your system's PATH first (see Prerequisites). Then, install the Python dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
+To get a local copy up and running follow these simple example steps.
 
-## Running the Application
+### Prerequisites
 
-Once the setup is complete, you can run the application using the main entry point script:
+This is an example of how to list things you need to use the software and how to install them.
+Ensure you have the following installed:
+- Python (3.x recommended)
+- pip (Python package manager)
+- ffmpeg (for media conversion)
 
-```bash
-python src/main.py
-```
+Note: The application will install other required dependencies automatically via `requirements.txt`.
 
-This should be executed from the project's root directory. The application window will appear, and media will be saved by default into a `downloads` directory created in the project root.
+### Installation
 
-## Running Tests (Optional)
+1. Clone the repo
+   ```sh
+   git clone https://github.com/Alex2003763/mediadl-convertor.git
+   ```
+2. Navigate to project directory
+   ```sh
+   cd mediadl-convertor
+   ```
+3. Install dependencies
+   ```sh
+   pip install -r requirements.txt
+   ```
+4. Run the application
+   ```sh
+   python src/main.py
+   ```
 
-To run the unit tests:
+## Contributing
 
-```bash
-python -m unittest discover -s tests -p "test_*.py"
-```
-This command should be run from the project's root directory.
+Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
-## Development
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-*   **GUI**: Developed using Tkinter.
-*   **Downloader**: Uses `yt-dlp` library.
-*   **Converter**: Uses `ffmpeg-python` library (which is a wrapper around `ffmpeg`).
+## License
 
-The `src/gui/main_window.py` can also be run directly for testing the GUI in isolation:
-```bash
-python src/gui/main_window.py
-```
-Similarly, `src/core/downloader.py` and `src/core/converter.py` have their own `if __name__ == "__main__":` blocks for direct testing of their functionalities.
-```
+MIT License
+
+Copyright (c) [year] [fullname]
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## Contact
+
+Owner: Alex2003763
+Project Link: https://github.com/Alex2003763/mediadl-convertor
+
